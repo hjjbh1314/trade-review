@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: #FAF9F5;
+  color: #1A1915;
+}
+
+/* 自定义滚动条 */
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #C9C4B2; border-radius: 3px; }
+
+/* 拖拽分隔条 */
+.resizer {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+}
+.resizer:hover, .resizer.dragging { background: #D97757; }
+.resizer::before {
+  content: '';
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px; height: 40px; background: #C9C4B2; border-radius: 1px;
+}
+.resizer:hover::before, .resizer.dragging::before { background: #FFFFFF; }
+
+/* 评分条渐变 */
+.score-bar-bg {
+  background: #EFECE2;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.score-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }

@@ -1,0 +1,22 @@
+# Core API + ASGI
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+
+# AI engine — uses your local Claude Code OAuth login (no API key)
+claude-agent-sdk>=0.1.0
+
+# Market data
+akshare>=1.16          # A-share quotes
+yfinance>=0.2.40       # HK / US quotes
+pandas>=2.2            # required by akshare/yfinance
+
+# JSON robustness
+json-repair>=0.30
+
+# Networking
+requests>=2.31
+httpx>=0.27
+
+# Optional — only needed if you wire iFinD via .env
+python-dotenv>=1.0
