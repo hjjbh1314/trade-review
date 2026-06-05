@@ -25,11 +25,9 @@ key through an OpenAI-compatible adapter.
 
 ## Screenshots
 
-| Dashboard | Flash review | Weekly mindset |
-|---|---|---|
-| _coming soon_ | _coming soon_ | _coming soon_ |
-
-> _Drop screenshots in `docs/screenshots/` and link them here._
+The [Quantitative engine](#quantitative-engine) section below has live backtest
+charts. App UI screenshots (Dashboard / Flash / Weekly mindset) are coming soon —
+generate your own with `scripts/screenshot.sh`.
 
 ---
 
@@ -41,6 +39,11 @@ key through an OpenAI-compatible adapter.
   technical levels, fundamentals, and risk notes.
 - 🧭 **Weekly mindset radar** — 6-axis scorecard (discipline, emotion, patience,
   autonomy, risk-control, learning) computed from your tagged trade history.
+- 🧪 **Quantitative engine** — a multi-factor A-share stock screener with a
+  *real* vectorized backtest (Rank-IC, quantile groups, non-overlapping Top-N,
+  walk-forward) over 3 years of data, plus a pluggable strategy registry so you
+  can drop in and backtest your own factor mix. The numbers below are
+  reproducible from the repo — including the ones that don't flatter it.
 - 🏷️ **Rule-based behavioral tags** — built-in detectors for chasing tops,
   panic selling, revenge trades, over-trading, counter-trend entries, etc.
 - 📊 **Multi-market quotes** — A-share via [akshare](https://github.com/akfamily/akshare),
@@ -50,6 +53,81 @@ key through an OpenAI-compatible adapter.
   OAuth, or DeepSeek via API key.
 - 🔒 **Single-user auth** — auto-generated 24-char access token, optionally
   served only over your private [Tailscale](https://tailscale.com/) mesh.
+
+---
+
+## Quantitative engine
+
+Most "quant" repos show you the one backtest that worked. This one ships the
+backtest that **kept me honest** — momentum and chase-volume factors looked
+great in theory and printed *negative* Rank-IC on the A-share mainboard, so the
+code deleted them.
+
+Every number here is computed live from 3 years of local A-share data
+(2023-02 → 2026-05, 506 mainboard names). Regenerate it all with:
+
+```bash
+.venv/bin/python -m backend.quant.backtest        # factor IC + composite report
+.venv/bin/python scripts/make_backtest_charts.py  # the two charts below
+```
+
+### What the factors actually predict
+
+![Single-factor Rank-IC](docs/screenshots/backtest_factor_ic.png)
+
+The four factors that survived (short-term reversal, low volatility, value/BP,
+small-cap) are equal-weighted into `multifactor_v1`. Composite Rank-IC, full
+sample:
+
+| Horizon | Rank-IC | ICIR | IC > 0 | Top-20 CAGR | Sharpe | Equal-weight basket |
+|--------:|--------:|-----:|-------:|------------:|-------:|--------------------:|
+| 5d  | +0.080 | +0.48 | 67% | +5.9%  | +0.41 | +13.8% |
+| 10d | +0.088 | +0.54 | 71% | +5.0%  | +0.36 | +15.0% |
+| 20d | +0.099 | +0.60 | 72% | +16.4% | +0.78 | +15.1% |
+
+Walk-forward (pick factors on data **before** 2025-01-01, test after):
+out-of-sample Rank-IC **+0.048**, IC>0 **61%** — the signal survives unseen data.
+
+### The honest part
+
+![Top-20 composite vs equal-weight basket](docs/screenshots/backtest_equity.png)
+
+The cross-sectional **ranking is genuinely predictive** (positive IC that holds
+up out-of-sample). But the long-only Top-20 portfolio does **not** robustly beat
+a simple equal-weight basket — at short horizons it lags, and in the 2025 rally
+the basket won outright. Positive IC ≠ a portfolio you should trade. The charts
+show it instead of hiding it. (And per the disclaimer above: none of this is
+investment advice.)
+
+### Write your own strategy
+
+A strategy is declarative — pick validated factors, weight them, set Top-N. Drop
+a file in `backend/quant/strategies/` and it's auto-discovered on import:
+
+```python
+# backend/quant/strategies/my_strategy.py
+from backend.quant.strategies import Strategy, register
+
+register(Strategy(
+    name="my_reversal",
+    description="reversal-tilted, low-vol filtered",
+    factors=["Rev_5", "LowVol_60", "SmallSize"],
+    weights={"Rev_5": 2.0},   # factors not listed default to weight 1.0
+    top_n=15,
+))
+```
+
+Then backtest it, screen with it, or call it over HTTP:
+
+```bash
+.venv/bin/python -m backend.quant.backtest --list                 # list strategies
+.venv/bin/python -m backend.quant.backtest --strategy my_reversal # IC / Sharpe / vs benchmark
+.venv/bin/python scripts/quant_run_today.py --strategy my_reversal # today's Top-N picks
+# or: GET /api/quant/strategies   ·   POST /api/quant/run {"strategy": "my_reversal"}
+```
+
+> Factors available: `Rev_5`, `LowVol_60`, `BP`, `SmallSize`, `EP`. Momentum and
+> chase-volume are intentionally excluded — the backtest showed they hurt.
 
 ---
 
@@ -72,6 +150,9 @@ key through an OpenAI-compatible adapter.
 │  │ (7 tags)    │  │ akshare/yfinance │  │ (persistent    │   │
 │  │             │  │ + iFinD optional │  │  warm session) │   │
 │  └─────────────┘  └──────────────────┘  └────────────────┘   │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ QuantEngine: factors / backtest / pluggable strategies   │  │
+│  └────────────────────────────────────────────────────────┘  │
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │                    SQLite                              │  │
 │  │  trades · positions · reviews · mindset_tags · weekly  │  │
@@ -178,6 +259,12 @@ trade_review/
 │   ├── mindset/
 │   │   ├── rule_engine.py         7-tag detector
 │   │   └── weekly.py              6-axis radar
+│   ├── quant/                     multi-factor screener + backtest
+│   │   ├── factors.py             validated factor library (z-score composite)
+│   │   ├── backtest.py            Rank-IC / groups / Top-N / walk-forward
+│   │   ├── signals.py             strategy → Top-N buy signals
+│   │   ├── strategies/            pluggable strategy registry (+ your own)
+│   │   └── paper_trader.py        paper fills into the trades table
 │   └── db/
 │       ├── schema.sql
 │       └── repo.py                SQLite access
@@ -206,6 +293,8 @@ Selected endpoints:
 | `GET`  | `/api/mindset/weekly?week=2026-W17` | 6-axis radar + top errors + AI message |
 | `GET`  | `/api/positions/with-quotes` | Positions enriched with live last/PnL |
 | `GET`  | `/api/market/kline?symbol=600519&market=A&period=daily&limit=120` | OHLCV + MA5/MA20 |
+| `GET`  | `/api/quant/strategies` | List registered quant strategies |
+| `POST` | `/api/quant/run` | Run a strategy → Top-N signals (`{strategy, top_n, paper}`) |
 
 All `/api/*` routes (except `/api/health` and `/api/auth-status`) require the
 access token via:
@@ -234,12 +323,15 @@ access token via:
 
 ## Roadmap
 
+- [x] Quant engine: multi-factor screener + vectorized backtest (IC / groups / walk-forward)
+- [x] Pluggable strategy registry — drop in and backtest your own factor mix
+- [x] Pluggable AI engines: Claude OAuth / DeepSeek API
+- [ ] Surface the quant signals & backtest in the React UI (currently API/CLI only)
+- [ ] Industry-neutralized factors (SH industry field still missing)
 - [ ] Sector / index aggregation for the daily report
 - [ ] Historical T+1/T+3/T+5 outcome tracking (`trade_outcomes` table is ready)
-- [x] Pluggable AI engines: Claude OAuth / DeepSeek API
-- [ ] Additional engines: Codex / OpenAI-compatible presets
 - [ ] Optional Postgres backend for multi-user
-- [ ] Demo screenshots & video walkthrough
+- [ ] App UI screenshots & video walkthrough
 
 ---
 

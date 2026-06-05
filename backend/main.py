@@ -22,6 +22,7 @@ from backend.api.flash import router as flash_router
 from backend.api.market import router as market_router
 from backend.api.mindset import router as mindset_router
 from backend.api.positions import router as positions_router
+from backend.api.quant import router as quant_router
 from backend.api.trades import router as trades_router
 from backend.db.repo import init_db
 
@@ -88,6 +89,7 @@ app.include_router(flash_router)
 app.include_router(market_router)
 app.include_router(mindset_router)
 app.include_router(positions_router)
+app.include_router(quant_router)
 app.include_router(trades_router)
 
 

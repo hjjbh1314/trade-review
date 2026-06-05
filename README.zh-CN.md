@@ -17,9 +17,8 @@
 
 ## 截图
 
-| 仪表盘 | 盘中闪评 | 周度心态 |
-|---|---|---|
-| _稍后补图_ | _稍后补图_ | _稍后补图_ |
+下面 [量化引擎](#量化引擎) 一节有实时回测图。App 界面截图（仪表盘 / 闪评 / 心态）稍后补，
+可用 `scripts/screenshot.sh` 自行生成。
 
 ---
 
@@ -28,10 +27,65 @@
 - 🔥 **盘中闪评**（≤10 秒）—— 输入一笔交易，得到 时机/心态/技术 三维 JSON 评分，加三个未来剧本（带概率、触发条件、对应操作）
 - 📋 **每日复盘** —— 流式生成每只持仓的明日操作建议、技术位、基本面要点、风险点
 - 🧭 **周度心态雷达** —— 基于你的历史标签算 6 维分数：纪律 / 情绪稳定 / 耐心 / 独立判断 / 风控执行 / 学习力
+- 🧪 **量化引擎** —— 多因子 A 股选股 + **真实**向量化回测（Rank-IC / 分组 / 非重叠 Top-N / walk-forward），3 年数据;可插拔策略注册表，写自己的因子组合并回测。下面的数字都能从仓库复现，包括对它不利的那些
 - 🏷️ **规则化行为标签** —— 内置 7 类检测器：追涨、杀跌、报复性交易、频繁交易、逆势、拖单、过早止盈
 - 📊 **多市场行情** —— A 股 [akshare](https://github.com/akfamily/akshare)，港美股 [yfinance](https://github.com/ranaroussi/yfinance)，自动兜底
 - 🤖 **多 AI 引擎** —— Claude Sonnet 4.6 走本地 Claude Code OAuth，DeepSeek 走 API Key
 - 🔒 **单用户鉴权** —— 自动生成 24 字符访问 Token；可选 [Tailscale](https://tailscale.com/) 私网，让手机/iPad 也能用
+
+---
+
+## 量化引擎
+
+大多数 "量化" 仓库只给你看那个跑通了的回测。这个仓库连**让我没法自欺的回测**一起开源 ——
+动量、追放量因子理论上很美，但在 A 股主板回测出来是**负 Rank-IC**，代码就把它们删了。
+
+下面每个数字都从本地 3 年 A 股数据实时算出（2023-02 → 2026-05，506 只主板）。一键复现：
+
+```bash
+.venv/bin/python -m backend.quant.backtest        # 单因子 IC + 合成组合报告
+.venv/bin/python scripts/make_backtest_charts.py  # 下面两张图
+```
+
+![单因子 Rank-IC](docs/screenshots/backtest_factor_ic.png)
+
+活下来的 4 个因子（短期反转 / 低波动 / 价值BP / 小市值）等权合成 `multifactor_v1`，全样本 Rank-IC：
+
+| 持有期 | Rank-IC | ICIR | IC>0 | Top20年化 | 夏普 | 等权基准 |
+|--------:|--------:|-----:|-----:|----------:|-----:|---------:|
+| 5日  | +0.080 | +0.48 | 67% | +5.9%  | +0.41 | +13.8% |
+| 10日 | +0.088 | +0.54 | 71% | +5.0%  | +0.36 | +15.0% |
+| 20日 | +0.099 | +0.60 | 72% | +16.4% | +0.78 | +15.1% |
+
+Walk-forward（2025-01-01 前选因子、之后检验）样本外 Rank-IC **+0.048**、IC>0 **61%** —— 信号在没见过的数据上活下来了。
+
+![Top20 组合 vs 等权基准](docs/screenshots/backtest_equity.png)
+
+**截面排序确实有预测力**（正 IC 且样本外站得住）。但长多 Top-20 组合**并不能稳健跑赢等权基准** ——
+短周期跑输，2025 那波行情里基准直接赢。**正 IC ≠ 一个该拿去交易的组合**。图照实画，不藏。
+（按上面的免责声明：这一切都不构成投资建议。）
+
+**写自己的策略**：声明式 —— 选已验证因子、给权重、定 Top-N。往 `backend/quant/strategies/` 丢个文件即被自动发现：
+
+```python
+# backend/quant/strategies/my_strategy.py
+from backend.quant.strategies import Strategy, register
+
+register(Strategy(
+    name="my_reversal",
+    description="反转倾斜 + 低波动过滤",
+    factors=["Rev_5", "LowVol_60", "SmallSize"],
+    weights={"Rev_5": 2.0},   # 没列的因子默认权重 1.0
+    top_n=15,
+))
+```
+
+```bash
+.venv/bin/python -m backend.quant.backtest --strategy my_reversal   # 回测:IC/夏普/对比基准
+.venv/bin/python scripts/quant_run_today.py --strategy my_reversal  # 今日 Top-N 选股
+```
+
+> 可用因子:`Rev_5`、`LowVol_60`、`BP`、`SmallSize`、`EP`。动量/追放量被刻意排除 —— 回测证明它们有害。
 
 ---
 
@@ -198,12 +252,15 @@ trade_review/
 
 ## Roadmap
 
+- [x] 量化引擎：多因子选股 + 向量化回测（IC / 分组 / walk-forward）
+- [x] 可插拔策略注册表 —— 丢个文件就能回测自己的因子组合
+- [x] 多 AI 引擎：Claude OAuth / DeepSeek API
+- [ ] 把量化信号与回测搬进 React 前端（目前仅 API/CLI）
+- [ ] 因子行业中性化（SH 行业字段缺失）
 - [ ] 行业 / 大盘聚合写入每日复盘
 - [ ] T+1/T+3/T+5 持仓后续走势回测（schema 已留好 `trade_outcomes` 表）
-- [x] 多 AI 引擎：Claude OAuth / DeepSeek API
-- [ ] 更多引擎：Codex / OpenAI-compatible presets
 - [ ] 可选 Postgres 后端，支持多用户
-- [ ] Demo 截图 + 视频演示
+- [ ] App 界面截图 + 视频演示
 
 ---
 
